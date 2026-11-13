@@ -9,7 +9,6 @@ permissions:
   contents: write
   pages: write
   id-token: write
-  workflows: write
 
 concurrency:
   group: "pages"
@@ -75,56 +74,6 @@ jobs:
           print("all Pages fixes applied")
           PY
           touch public/.nojekyll
-
-      - name: Add the deploy workflow for future pushes
-        run: |
-          mkdir -p .github/workflows
-          cat > .github/workflows/deploy.yml << 'YAML'
-          name: Deploy to GitHub Pages
-
-          on:
-            push:
-              branches: ["main"]
-            workflow_dispatch:
-
-          permissions:
-            contents: read
-            pages: write
-            id-token: write
-
-          concurrency:
-            group: "pages"
-            cancel-in-progress: false
-
-          jobs:
-            deploy:
-              environment: github-pages
-              runs-on: ubuntu-latest
-              steps:
-                - name: Checkout
-                  uses: actions/checkout@v4
-                - name: Set up Node
-                  uses: actions/setup-node@v4
-                  with:
-                    node-version: 22
-                    cache: npm
-                - name: Install dependencies
-                  run: npm ci
-                - name: Build
-                  run: npm run build
-                - name: Add SPA fallback for GitHub Pages
-                  run: cp dist/index.html dist/404.html
-                - name: Setup Pages
-                  uses: actions/configure-pages@v5
-                - name: Upload artifact
-                  uses: actions/upload-pages-artifact@v3
-                  with:
-                    path: "dist"
-                - name: Deploy to GitHub Pages
-                  id: deployment
-                  uses: actions/deploy-pages@v4
-          YAML
-          rm -f .github/workflows/unpack-and-deploy.yml
 
       - name: Commit the unpacked source
         run: |

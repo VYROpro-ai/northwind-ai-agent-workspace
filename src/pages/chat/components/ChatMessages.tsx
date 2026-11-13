@@ -177,10 +177,13 @@ export function ThreadMessages({
   agent,
   messages,
   thinking,
+  streamingId,
 }: {
   agent: ChatAgent;
   messages: ThreadMessage[];
   thinking: boolean;
+  /** Id of the message currently streaming in — rendered in full with a caret, not typewritten. */
+  streamingId?: number | null;
 }) {
   return (
     <>
@@ -191,7 +194,14 @@ export function ThreadMessages({
           </UserMessage>
         ) : (
           <AgentTurn key={m.id} agent={agent} time={m.time} footer={<ReplyActions copyText={m.text} />}>
-            <StreamedText text={m.text} />
+            {m.id === streamingId ? (
+              <p>
+                {m.text}
+                <StreamingCaret />
+              </p>
+            ) : (
+              <StreamedText text={m.text} />
+            )}
           </AgentTurn>
         ),
       )}

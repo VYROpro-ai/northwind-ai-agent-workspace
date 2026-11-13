@@ -36,8 +36,8 @@ export function WorkspaceLogo({ className }: { className?: string }) {
       aria-label="Northwind Labs"
       className={cn('inline-block h-6 w-[152px] bg-fg', className)}
       style={{
-        maskImage: 'url(${import.meta.env.BASE_URL}images/brand/northwind-logo.svg)',
-        WebkitMaskImage: 'url(${import.meta.env.BASE_URL}images/brand/northwind-logo.svg)',
+        maskImage: `url(${import.meta.env.BASE_URL}images/brand/northwind-logo.svg)`,
+        WebkitMaskImage: `url(${import.meta.env.BASE_URL}images/brand/northwind-logo.svg)`,
         maskRepeat: 'no-repeat',
         WebkitMaskRepeat: 'no-repeat',
         maskSize: 'contain',

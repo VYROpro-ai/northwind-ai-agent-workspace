@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { cn } from '@/lib/cn';
 import { AppShell } from '@/layouts/AppShell';
@@ -21,6 +21,9 @@ import {
 } from '@/components/ui';
 import { formatNumber } from '@/lib/format';
 import { agentCount, agents, type AgentSummary } from './data';
+import { listAgents } from '@/lib/agents';
+import { useAuth } from '@/lib/auth';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { AgentCard, AgentStatusLabel } from './components/AgentCard';
 import { AgentIcon } from './components/AgentIcon';
 import { FilterMenu } from './components/FilterMenu';
@@ -58,7 +61,7 @@ function AgentsTable({ list }: { list: AgentSummary[] }) {
               <TR key={a.id}>
                 <TD>
                   <Link
-                    to="/agents/support-agent"
+                    to={`/agents/${a.id}`}
                     className="flex items-center gap-3 font-medium text-fg hover:underline"
                   >
                     <AgentIcon icon={a.icon} tone={a.tone} size={32} shape="circle" />
@@ -98,6 +101,23 @@ function AgentsTable({ list }: { list: AgentSummary[] }) {
 export default function AgentLibrary() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { workspace } = useAuth();
+  // Real agents when configured; null = demo mode or load failed (fall back to mock).
+  const [realAgents, setRealAgents] = useState<AgentSummary[] | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !workspace) return;
+    let cancelled = false;
+    void listAgents(workspace.id).then((rows) => {
+      if (!cancelled && rows) setRealAgents(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace]);
+
+  const source = realAgents ?? agents;
+  const total = realAgents ? realAgents.length : agentCount;
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [owner, setOwner] = useState<string | null>(null);
@@ -109,14 +129,14 @@ export default function AgentLibrary() {
 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return agents
+    return source
       .filter((a) => !q || `${a.name} ${a.description}`.toLowerCase().includes(q))
       .filter((a) => !status || a.status === status)
       .filter((a) => !owner || a.owner.name === owner)
       .filter((a) => !model || a.model === model)
       .filter((a) => !tag || a.tags.includes(tag))
       .sort(sort ? sorters[sort] : () => 0);
-  }, [query, status, owner, model, tag, sort]);
+  }, [query, status, owner, model, tag, sort, source]);
 
   const filtered = Boolean(query || status || owner || model || tag);
   const clear = () => {
@@ -132,7 +152,7 @@ export default function AgentLibrary() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-h2 font-semibold tracking-[-0.02em] sm:text-[28px] sm:leading-9">
-            Agents <span className="text-h4 font-medium text-fg-3">{agentCount}</span>
+            Agents <span className="text-h4 font-medium text-fg-3">{total}</span>
           </h1>
           <p className="text-body-m text-fg-2">
             Build, test and watch the health of every agent in Northwind Labs.
@@ -207,19 +227,19 @@ export default function AgentLibrary() {
         />
         <FilterMenu
           label="Owner"
-          options={unique(agents.map((a) => a.owner.name))}
+          options={unique(source.map((a) => a.owner.name))}
           value={owner}
           onChange={setOwner}
         />
         <FilterMenu
           label="Model"
-          options={unique(agents.map((a) => a.model))}
+          options={unique(source.map((a) => a.model))}
           value={model}
           onChange={setModel}
         />
         <FilterMenu
           label="Tag"
-          options={unique(agents.flatMap((a) => a.tags))}
+          options={unique(source.flatMap((a) => a.tags))}
           value={tag}
           onChange={setTag}
         />

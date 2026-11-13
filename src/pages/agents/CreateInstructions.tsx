@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 import { Icon } from '@/components/icons';
 import { Button, Dropdown, Input, Progress, useToast } from '@/components/ui';
 import { WizardStep } from './components/WizardLayout';
+import { writeDraft } from '@/lib/agentDraft';
 
 type Decision = 'pending' | 'accepted' | 'rejected';
 
@@ -48,6 +49,27 @@ export default function CreateInstructions() {
   ]);
 
   const pending = suggestions.filter((s) => decisions[s.id] === 'pending').length;
+
+  // Keep the shared wizard draft in sync: the rendered rules above are the instructions.
+  useEffect(() => {
+    const accepted = suggestions.filter((s) => decisions[s.id] === 'accepted').map((s) => s.text);
+    const lines = [
+      'You are the support agent for {{company}}. You help customers with billing, orders and refunds.',
+      '',
+      'Tone: Warm and brief. Use the customer’s name, {{user_name}}. Keep replies under 120 words.',
+      '',
+      'MUST DO',
+      '• Cite the help doc for every policy you mention.',
+      ...(decisions.window === 'accepted' ? [] : ['• Offer a refund when the customer asks.']),
+      ...accepted,
+      '',
+      'MUST NEVER DO',
+      '• Share another customer’s details. • Promise delivery dates the tracker doesn’t show.',
+      '',
+      'Output format: Short paragraphs. End with one clear next step for the customer.',
+    ];
+    writeDraft({ instructions: lines.join('\n') });
+  }, [decisions]);
   const decideAll = (decision: Decision) => {
     setDecisions({ window: decision, approval: decision });
     setChoosing(false);

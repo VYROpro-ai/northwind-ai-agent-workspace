@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMediaQuery } from '@/lib/hooks';
 import { cannedReply } from './data';
+import { useAuth } from '@/lib/auth';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { createChat, listMessages, streamChat } from '@/lib/chats';
 
 /** True when the user asked the OS for less motion. */
 export function useReducedMotion() {
@@ -102,4 +105,139 @@ export function useChatThread(reply = cannedReply) {
   );
 
   return { messages, thinking, send };
+}
+
+export interface RealAgentConfig {
+  /** DB id — when present the Edge Function loads the agent; otherwise the inline config is sent. */
+  id?: string;
+  name: string;
+  instructions: string;
+  model: string;
+  temperature: number;
+}
+
+/**
+ * Real chat thread: same shape as useChatThread, plus streaming state, the chat id
+ * and any error. Creates a chat row on first send (when the agent has a DB id),
+ * streams the assistant reply via the `chat` Edge Function and lets the function
+ * persist messages + usage — this client never inserts messages itself.
+ * With a null agent, send() is a no-op.
+ */
+export function useRealChatThread(
+  agent: RealAgentConfig | null,
+  opts?: { resetKey?: string | number; chatId?: string },
+) {
+  const { workspace } = useAuth();
+  const [messages, setMessages] = useState<ThreadMessage[]>([]);
+  const [thinking, setThinking] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [chatId, setChatId] = useState<string | null>(opts?.chatId ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const chatIdRef = useRef<string | null>(opts?.chatId ?? null);
+  const streamingIdRef = useRef<number | null>(null);
+  const nextId = useRef(1);
+  const messagesRef = useRef<ThreadMessage[]>([]);
+  const resetKey = opts?.resetKey;
+  const existingChatId = opts?.chatId;
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Fresh thread when the selected agent changes.
+  useEffect(() => {
+    setMessages([]);
+    messagesRef.current = [];
+    setThinking(false);
+    setStreaming(false);
+    setError(null);
+    setChatId(null);
+    chatIdRef.current = null;
+    streamingIdRef.current = null;
+    nextId.current = 1;
+  }, [resetKey]);
+
+  // Load an existing chat's history (route /chat/:id).
+  useEffect(() => {
+    if (!existingChatId || !isSupabaseConfigured) return;
+    let cancelled = false;
+    void listMessages(existingChatId).then((rows) => {
+      if (cancelled) return;
+      if (rows.length > 0) {
+        setMessages(rows);
+        messagesRef.current = rows;
+        nextId.current = rows.length + 1;
+      }
+      setChatId(existingChatId);
+      chatIdRef.current = existingChatId;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [existingChatId]);
+
+  const send = useCallback(
+    async (text: string) => {
+      const question = text.trim();
+      if (!question || !agent || thinking) return;
+      setError(null);
+      const time = timeFormat.format(new Date());
+      const userMsg: ThreadMessage = { id: nextId.current++, role: 'user', text: question, time };
+      const history = [...messagesRef.current, userMsg];
+      messagesRef.current = history;
+      setMessages(history);
+      setThinking(true);
+      setStreaming(true);
+      const agentMsgId = nextId.current++;
+      streamingIdRef.current = agentMsgId;
+      setMessages((list) => [...list, { id: agentMsgId, role: 'agent', text: '', time }]);
+      try {
+        if (!supabase) throw new Error('Supabase is not configured');
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) throw new Error('You are signed out. Sign in again to chat.');
+        let cid = chatIdRef.current;
+        if (!cid && agent.id && workspace) {
+          cid = await createChat(workspace.id, agent.id, question.slice(0, 60));
+          if (cid) {
+            chatIdRef.current = cid;
+            setChatId(cid);
+          }
+        }
+        await streamChat({
+          agentId: agent.id,
+          agent: agent.id
+            ? undefined
+            : { instructions: agent.instructions, model: agent.model, temperature: agent.temperature, name: agent.name },
+          messages: history.map((m) => ({
+            role: m.role === 'agent' ? ('assistant' as const) : ('user' as const),
+            content: m.text,
+          })),
+          chatId: cid ?? undefined,
+          accessToken: token,
+          onDelta: (t) => {
+            setMessages((list) => list.map((m) => (m.id === agentMsgId ? { ...m, text: t } : m)));
+          },
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Chat failed');
+        setMessages((list) => list.filter((m) => m.id !== agentMsgId));
+      } finally {
+        setThinking(false);
+        setStreaming(false);
+        streamingIdRef.current = null;
+      }
+    },
+    [agent, thinking, workspace],
+  );
+
+  return {
+    messages,
+    thinking,
+    send,
+    streaming,
+    streamingId: streaming ? streamingIdRef.current : null,
+    chatId,
+    error,
+  };
 }

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router';
 import { Icon } from '@/components/icons';
 import { userForRole } from '@/data/people';
 import { ChatComposer, HintKey } from './components/ChatComposer';
@@ -7,7 +8,11 @@ import { ChatLayout, ChatThread, ComposerDock } from './components/ChatLayout';
 import { ThreadMessages } from './components/ChatMessages';
 import { PromptLibraryDrawer } from './components/PromptLibraryDrawer';
 import { agents, starters, type AgentId } from './data';
-import { useChatThread } from './hooks';
+import { useChatThread, useRealChatThread, type RealAgentConfig } from './hooks';
+import { useAuth } from '@/lib/auth';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { getAgent, listAgents } from '@/lib/agents';
+import { useToast } from '@/components/ui';
 
 function greeting() {
   const hour = new Date().getHours();
@@ -25,10 +30,66 @@ export default function NewChat({ overlay }: NewChatProps) {
   const [promptsOpen, setPromptsOpen] = useState(overlay === 'prompts');
   const [draft, setDraft] = useState('');
   const [hello] = useState(greeting);
-  const { messages, thinking, send } = useChatThread();
+  const { id: chatIdParam } = useParams();
+  const { workspace } = useAuth();
+  const toast = useToast();
+
+  // Real agents for the workspace (configured mode only); matched to the picker by name.
+  const [realAgents, setRealAgents] = useState<RealAgentConfig[]>([]);
+  useEffect(() => {
+    if (!isSupabaseConfigured || !workspace) return;
+    let cancelled = false;
+    void listAgents(workspace.id).then((rows) => {
+      if (cancelled || !rows) return;
+      // Summaries carry no instructions; the matched row is loaded in full below.
+      setRealAgents(
+        rows.map((r) => ({ id: r.id, name: r.name, instructions: '', model: '', temperature: 0.7 })),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace]);
+
+  // Full config of the matched real agent (instructions/model come from the DB row).
+  const [matchedAgent, setMatchedAgent] = useState<RealAgentConfig | null>(null);
+  useEffect(() => {
+    const match = realAgents.find(
+      (a) => a.name.toLowerCase() === agents[agentId].name.toLowerCase(),
+    );
+    if (!match || !workspace || !isSupabaseConfigured) {
+      setMatchedAgent(null);
+      return;
+    }
+    let cancelled = false;
+    void getAgent(workspace.id, match.id ?? '').then((row) => {
+      if (cancelled || !row) return;
+      setMatchedAgent({
+        id: row.id,
+        name: row.name,
+        instructions: row.instructions ?? '',
+        model: row.model,
+        temperature: row.temperature,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [realAgents, agentId, workspace]);
+
+  const demo = useChatThread();
+  const real = useRealChatThread(matchedAgent, { resetKey: agentId, chatId: chatIdParam });
+  const useReal = isSupabaseConfigured && Boolean(matchedAgent);
+  const { messages, thinking, send } = useReal ? real : demo;
   const agent = agents[agentId];
   const me = userForRole.member;
   const started = messages.length > 0;
+
+  useEffect(() => {
+    if (useReal && real.error) {
+      toast({ tone: 'danger', title: 'Chat failed', description: real.error });
+    }
+  }, [useReal, real.error, toast]);
 
   return (
     <ChatLayout
@@ -47,7 +108,12 @@ export default function NewChat({ overlay }: NewChatProps) {
     >
       {started ? (
         <ChatThread scrollKey={messages.length + (thinking ? 1 : 0)}>
-          <ThreadMessages agent={agent} messages={messages} thinking={thinking} />
+          <ThreadMessages
+            agent={agent}
+            messages={messages}
+            thinking={thinking}
+            streamingId={useReal ? real.streamingId : null}
+          />
         </ChatThread>
       ) : (
         <section

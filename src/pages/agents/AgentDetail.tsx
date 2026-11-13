@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import { cn } from '@/lib/cn';
 import { AppShell } from '@/layouts/AppShell';
 import { Icon } from '@/components/icons';
@@ -9,6 +9,7 @@ import {
   agentKnowledge,
   agentTags,
   agentTools,
+  agents,
   detailStats,
   failureReasons,
   latestFeedback,
@@ -16,7 +17,11 @@ import {
   runsAxis,
   runsDates,
   runsPerDay,
+  type AgentSummary,
 } from './data';
+import { getAgentSummary } from '@/lib/agents';
+import { useAuth } from '@/lib/auth';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { AgentHeader } from './components/AgentHeader';
 import { ArchiveDialog } from './components/ArchiveDialog';
 import { RunsChart } from './components/RunsChart';
@@ -48,15 +53,33 @@ function Chip({ children }: { children: ReactNode }) {
 export default function AgentDetail({ dialog }: { dialog?: AgentDialog }) {
   const navigate = useNavigate();
   const toast = useToast();
+  const { id } = useParams();
+  const { workspace } = useAuth();
   const [open, setOpen] = useState<AgentDialog | null>(dialog ?? null);
   const maxFailures = Math.max(...failureReasons.map((f) => f.count));
+
+  // Real agent when the :id param names a DB row; otherwise the mock Support Agent.
+  const mock: AgentSummary = agents.find((a) => a.id === (id ?? 'support-agent')) ?? agents[0];
+  const [real, setReal] = useState<AgentSummary | null>(null);
+  useEffect(() => {
+    if (!isSupabaseConfigured || !workspace || !id || id === 'support-agent') return;
+    let cancelled = false;
+    void getAgentSummary(workspace.id, id).then((row) => {
+      if (!cancelled && row) setReal(row);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace, id]);
+  const agent = real ?? mock;
+  const tags = real ? real.tags : agentTags;
 
   const archive = () => {
     setOpen(null);
     toast({
-      title: 'Support Agent archived',
+      title: `${agent.name} archived`,
       description: '3 workflows paused safely.',
-      action: { label: 'Undo', onClick: () => toast({ tone: 'neutral', title: 'Support Agent restored' }) },
+      action: { label: 'Undo', onClick: () => toast({ tone: 'neutral', title: `${agent.name} restored` }) },
     });
     navigate('/agents');
   };
@@ -66,9 +89,14 @@ export default function AgentDetail({ dialog }: { dialog?: AgentDialog }) {
       active="Agents"
       role="builder"
       bare
-      crumbs={[{ label: 'Agents', to: '/agents' }, { label: 'Support Agent' }]}
+      crumbs={[{ label: 'Agents', to: '/agents' }, { label: agent.name }]}
     >
-      <AgentHeader tab="Overview" onShare={() => setOpen('share')} onArchive={() => setOpen('archive')} />
+      <AgentHeader
+        tab="Overview"
+        agent={{ name: agent.name, description: agent.description, status: agent.status, model: agent.model }}
+        onShare={() => setOpen('share')}
+        onArchive={() => setOpen('archive')}
+      />
 
       <div className="flex flex-col items-start gap-6 px-4 pt-6 pb-10 sm:px-6 lg:px-8 xl:flex-row">
         <div className="flex w-full min-w-0 flex-1 flex-col gap-5">
@@ -167,16 +195,16 @@ export default function AgentDetail({ dialog }: { dialog?: AgentDialog }) {
             <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-y-2.5 text-13">
               <dt className="text-fg-2">Owner</dt>
               <dd className="inline-flex items-center gap-1.5">
-                <Avatar name={people.priya.name} src={people.priya.avatar} size="xs" />
-                Priya Nair
+                <Avatar name={agent.owner.name} src={agent.owner.avatar} size="xs" />
+                {agent.owner.name}
               </dd>
               <dt className="text-fg-2">Created</dt>
               <dd>Sep 12, 2026</dd>
               <dt className="text-fg-2">Last edited</dt>
-              <dd>Today, 9:20 AM</dd>
+              <dd>{agent.edited}</dd>
               <dt className="text-fg-2">Tags</dt>
               <dd className="flex flex-wrap gap-1">
-                {agentTags.map((t) => (
+                {tags.map((t) => (
                   <span
                     key={t}
                     className="h-5 rounded-xs border border-border px-1.5 text-caption leading-[18px] text-fg-2"

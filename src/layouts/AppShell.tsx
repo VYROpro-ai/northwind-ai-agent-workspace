@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/cn';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { useDocumentTitle } from '@/lib/hooks';
 import { Drawer } from '@/components/ui/Overlay';
 import { Sidebar } from '@/components/app/Sidebar';
@@ -25,6 +26,8 @@ export interface AppShellProps {
   /** Open the command palette / notifications on mount (used by the W12-04 and W2-04 state routes). */
   initialOverlay?: 'command' | 'notifications';
   mainClassName?: string;
+  /** Extra content in the top bar; defaults to a "Demo data" pill in demo mode. */
+  extra?: ReactNode;
 }
 
 /**
@@ -40,6 +43,7 @@ export function AppShell({
   wash,
   initialOverlay,
   mainClassName,
+  extra,
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(initialOverlay === 'command');
@@ -85,6 +89,14 @@ export function AppShell({
           <Topbar
             crumbs={crumbs}
             role={role}
+            extra={
+              extra ??
+              (!isSupabaseConfigured ? (
+                <span className="hidden shrink-0 items-center rounded-full border border-border bg-subtle px-2.5 py-1 text-body-s font-medium text-fg-2 sm:inline-flex">
+                  Demo data
+                </span>
+              ) : undefined)
+            }
             onMenu={() => setNavOpen(true)}
             onSearch={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen(true)}

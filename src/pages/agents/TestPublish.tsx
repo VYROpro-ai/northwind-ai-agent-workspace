@@ -4,11 +4,16 @@ import { cn } from '@/lib/cn';
 import { Icon } from '@/components/icons';
 import { Button, Field, Textarea, useToast } from '@/components/ui';
 import { ToolCall, TypingDots } from '@/components/ai';
-import { accessOptions, SUPPORT_AGENT_PATH } from './data';
+import { accessOptions, SUPPORT_AGENT_PATH, type ChatTurn } from './data';
 import { ChatInput } from './components/ChatInput';
 import { ChatTurnView, CiteMark, TestAgentMessage, TestUserMessage } from './components/ChatTurn';
 import { useTestConversation } from './components/useTestConversation';
 import { WizardLayout } from './components/WizardLayout';
+import { useAuth } from '@/lib/auth';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { createAgent, publishAgent } from '@/lib/agents';
+import { streamChat } from '@/lib/chats';
+import { clearDraft, readDraft } from '@/lib/agentDraft';
 
 type Approval = 'pending' | 'approved' | 'denied';
 type Access = (typeof accessOptions)[number]['value'];
@@ -105,6 +110,7 @@ function FirstReply({ approval, onDecide }: { approval: Approval; onDecide: (a: 
 export default function TestPublish() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { workspace } = useAuth();
   const { turns, typing, ask, reset } = useTestConversation([]);
   const [approval, setApproval] = useState<Approval>('pending');
   const [access, setAccess] = useState<Access>('team');
@@ -114,13 +120,71 @@ export default function TestPublish() {
   const [publishing, setPublishing] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
+  // Real test chat (configured mode): streams the draft agent via the Edge Function.
+  const [realTurns, setRealTurns] = useState<ChatTurn[]>([]);
+  const [realTyping, setRealTyping] = useState(false);
+  const [realStreaming, setRealStreaming] = useState('');
+  const draft = readDraft();
+
+  const askReal = async (text: string) => {
+    const question = text.trim();
+    if (!question || realTyping || !supabase) return;
+    const next: ChatTurn[] = [...realTurns, { id: Date.now(), from: 'user', text: question }];
+    setRealTurns(next);
+    setRealTyping(true);
+    setRealStreaming('');
+    let streamed = '';
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('You are signed out. Sign in again to test.');
+      const usage = await streamChat({
+        agent: {
+          instructions: draft.instructions,
+          model: draft.model,
+          temperature: draft.temperature,
+          name: draft.name,
+        },
+        messages: next.map((m) => ({
+          role: m.from === 'agent' ? ('assistant' as const) : ('user' as const),
+          content: m.text,
+        })),
+        accessToken: token,
+        onDelta: (t) => {
+          streamed = t;
+          setRealStreaming(t);
+        },
+      });
+      setRealTurns((list) => [
+        ...list,
+        {
+          id: Date.now() + 1,
+          from: 'agent',
+          text: streamed,
+          meta: `${usage.tokensIn + usage.tokensOut} tokens · $${usage.costUsd.toFixed(3)} · ${(usage.latencyMs / 1000).toFixed(1)} s`,
+        },
+      ]);
+    } catch (e) {
+      toast({
+        tone: 'danger',
+        title: 'Test chat failed',
+        description: e instanceof Error ? e.message : 'Unknown error',
+      });
+    } finally {
+      setRealTyping(false);
+      setRealStreaming('');
+    }
+  };
+
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' });
-  }, [turns, typing]);
+  }, [turns, typing, realTurns, realTyping, realStreaming]);
 
   const resetChat = () => {
     reset();
     setApproval('pending');
+    setRealTurns([]);
+    setRealStreaming('');
   };
 
   const decide = (a: Approval) => {
@@ -131,13 +195,38 @@ export default function TestPublish() {
     });
   };
 
-  const publish = () => {
+  const publish = async () => {
+    const who = accessOptions.find((o) => o.value === access)?.label ?? '';
+    if (!isSupabaseConfigured || !workspace) {
+      // Demo mode keeps the template's behaviour: a short pause, then the mock detail page.
+      setPublishing(true);
+      window.setTimeout(() => {
+        toast({ title: 'Support Agent v1 is live', description: `Published for ${who.toLowerCase()}.` });
+        navigate(SUPPORT_AGENT_PATH);
+      }, 900);
+      return;
+    }
+    if (!draft.name.trim()) {
+      toast({ tone: 'danger', title: 'Give the agent a name first', description: 'Go back to Basics.' });
+      return;
+    }
     setPublishing(true);
-    window.setTimeout(() => {
-      const who = accessOptions.find((o) => o.value === access)?.label ?? '';
-      toast({ title: 'Support Agent v1 is live', description: `Published for ${who.toLowerCase()}.` });
-      navigate(SUPPORT_AGENT_PATH);
-    }, 900);
+    try {
+      const row = await createAgent(workspace.id, draft);
+      if (!row) throw new Error('Could not save the agent. Check your connection and try again.');
+      const version = await publishAgent(workspace.id, row.id, notes || 'First version.');
+      if (!version) throw new Error('Agent saved, but publishing failed.');
+      clearDraft();
+      toast({ title: `${row.name} ${version.version} is live`, description: `Published for ${who.toLowerCase()}.` });
+      navigate(`/agents/${row.id}`);
+    } catch (e) {
+      toast({
+        tone: 'danger',
+        title: 'Publish failed',
+        description: e instanceof Error ? e.message : 'Unknown error',
+      });
+      setPublishing(false);
+    }
   };
 
   return (
@@ -151,7 +240,7 @@ export default function TestPublish() {
             Test your agent
           </h1>
           <span className="inline-flex h-[22px] items-center rounded-full bg-subtle px-2 text-body-s text-fg-2">
-            Draft v1 · Model B
+            {draft.name} · Draft v1
           </span>
           <span className="flex-1" />
           <Button variant="secondary" size="xs" className="h-[30px]" onClick={resetChat}>
@@ -170,15 +259,23 @@ export default function TestPublish() {
           {turns.map((turn) => (
             <ChatTurnView key={turn.id} turn={turn} />
           ))}
-          {typing && <TypingDots className="self-start" />}
+          {realTurns.map((turn) => (
+            <ChatTurnView key={turn.id} turn={turn} />
+          ))}
+          {realTyping && realStreaming && (
+            <TestAgentMessage className="max-w-[760px]">
+              <p className="text-body-m leading-[22px]">{realStreaming}</p>
+            </TestAgentMessage>
+          )}
+          {(typing || realTyping) && <TypingDots className="self-start" />}
         </div>
         <div className="shrink-0 px-4 pt-3.5 pb-[18px] sm:px-8">
           <ChatInput
             size="md"
             label="Test message"
             placeholder="Send a test message…"
-            busy={typing}
-            onSend={ask}
+            busy={typing || realTyping}
+            onSend={isSupabaseConfigured ? askReal : ask}
           />
         </div>
       </section>

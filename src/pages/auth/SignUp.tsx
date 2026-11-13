@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Button, Checkbox, Divider, Field, Input, useToast } from '@/components/ui';
 import { AuthHeading } from './components/AuthHeading';
@@ -6,8 +6,9 @@ import { AuthLayout } from './components/AuthLayout';
 import { PasswordInput } from './components/PasswordInput';
 import { PasswordStrength } from './components/PasswordStrength';
 import { SocialButtons } from './components/SocialButtons';
-import { signedInUser } from './data';
 import { checkPassword, isEmail } from './password';
+import { useAuth } from '@/lib/auth';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 const textLink = 'font-medium text-link hover:underline underline-offset-2';
 
@@ -15,12 +16,19 @@ const textLink = 'font-medium text-link hover:underline underline-offset-2';
 export default function SignUp() {
   const navigate = useNavigate();
   const toast = useToast();
-  const [name, setName] = useState(signedInUser.name);
-  const [email, setEmail] = useState(signedInUser.email);
-  const [password, setPassword] = useState('Northwind-2026');
+  const { user, signUp } = useAuth();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [agreed, setAgreed] = useState(true);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | undefined>(undefined);
+
+  // Already signed in — go straight to the workspace.
+  useEffect(() => {
+    if (user) navigate('/', { replace: true });
+  }, [user, navigate]);
 
   const { checks } = checkPassword(password);
   const passwordOk = checks.length && checks.number && checks.symbol;
@@ -31,12 +39,35 @@ export default function SignUp() {
     terms: submitted && !agreed,
   };
 
-  const onSubmit = (event: FormEvent) => {
+  const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitted(true);
+    setAuthError(undefined);
     if (!name.trim() || !isEmail(email) || !passwordOk || !agreed) return;
+    if (!isSupabaseConfigured) {
+      // Demo mode keeps the template's behaviour: a short pause, then verify-email.
+      setLoading(true);
+      window.setTimeout(() => navigate('/verify-email'), 600);
+      return;
+    }
     setLoading(true);
-    window.setTimeout(() => navigate('/verify-email'), 600);
+    const { error, session } = await signUp(email, password, name.trim());
+    setLoading(false);
+    if (error) {
+      setAuthError(error.message);
+      return;
+    }
+    // Confirm-email OFF is assumed: a session means the account is live.
+    navigate(session ? '/' : '/verify-email');
+  };
+
+  const onGoogle = async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      navigate('/onboarding/workspace');
+      return;
+    }
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+    if (error) toast({ tone: 'danger', title: 'Google sign-up failed', description: error.message });
   };
 
   const legal = (label: string) =>
@@ -64,7 +95,7 @@ export default function SignUp() {
               />
             )}
           </Field>
-          <Field label="Work email" error={errors.email}>
+          <Field label="Work email" error={errors.email ?? authError}>
             {(id, describedBy) => (
               <Input
                 id={id}
@@ -72,7 +103,7 @@ export default function SignUp() {
                 autoComplete="email"
                 className="h-10"
                 value={email}
-                invalid={Boolean(errors.email)}
+                invalid={Boolean(errors.email ?? authError)}
                 aria-describedby={describedBy}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -130,12 +161,7 @@ export default function SignUp() {
           </Link>
         </p>
         <Divider label="Or" />
-        <SocialButtons
-          compact
-          verb="Sign up"
-          onGoogle={() => navigate('/onboarding/workspace')}
-          onSso={() => navigate('/sso')}
-        />
+        <SocialButtons compact verb="Sign up" onGoogle={onGoogle} onSso={() => navigate('/sso')} />
       </form>
     </AuthLayout>
   );

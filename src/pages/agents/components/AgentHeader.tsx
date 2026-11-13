@@ -24,12 +24,20 @@ export interface AgentHeaderProps {
   unpublished?: boolean;
   onShare?: () => void;
   onArchive?: () => void;
+  /** Real agent identity; defaults to the mock Support Agent. */
+  agent?: { name: string; description: string; status: string; model: string; version?: string };
 }
 
 /** Part · Agent header — identity, status, actions and the section tab bar. */
-export function AgentHeader({ tab, unpublished, onShare, onArchive }: AgentHeaderProps) {
+export function AgentHeader({ tab, unpublished, onShare, onArchive, agent }: AgentHeaderProps) {
   const navigate = useNavigate();
   const toast = useToast();
+  const name = agent?.name ?? 'Support Agent';
+  const description =
+    agent?.description ?? 'Answers billing, order and refund questions from the help docs. Asks before refunds or emails.';
+  const status = agent?.status ?? 'Published';
+  const model = agent?.model ?? 'Model B Balanced';
+  const version = agent?.version ?? 'v4';
 
   return (
     <div className="flex flex-col gap-4 border-b border-border bg-surface px-4 pt-5 sm:px-6 lg:px-8">
@@ -37,18 +45,21 @@ export function AgentHeader({ tab, unpublished, onShare, onArchive }: AgentHeade
         <AgentAvatar tone="ai" size={52} className="rounded-[13px]" />
         <div className="flex min-w-60 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-h2 font-semibold tracking-[-0.015em] text-fg">Support Agent</h1>
-            <Badge tone="ok" dot size="sm" className="h-[22px] px-2 text-body-s">
-              Published
+            <h1 className="text-h2 font-semibold tracking-[-0.015em] text-fg">{name}</h1>
+            <Badge
+              tone={status === 'Published' ? 'ok' : status === 'Paused' ? 'warn' : 'neutral'}
+              dot
+              size="sm"
+              className="h-[22px] px-2 text-body-s"
+            >
+              {status}
             </Badge>
             <span className="inline-flex h-[22px] items-center rounded-sm border border-border px-2 text-body-s font-medium text-fg-2">
-              Model B Balanced
+              {model}
             </span>
-            <span className="font-mono text-body-s text-fg-3">v4</span>
+            <span className="font-mono text-body-s text-fg-3">{version}</span>
           </div>
-          <p className="text-body-m text-fg-2">
-            Answers billing, order and refund questions from the help docs. Asks before refunds or emails.
-          </p>
+          <p className="text-body-m text-fg-2">{description}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" leftIcon="chat" className="px-3" onClick={() => navigate('/chat')}>
@@ -66,7 +77,7 @@ export function AgentHeader({ tab, unpublished, onShare, onArchive }: AgentHeade
             disabled={!unpublished}
             className="px-3.5"
             onClick={() =>
-              toast({ title: 'Support Agent v5 published', description: 'Live for the whole workspace.' })
+              toast({ title: `${name} v5 published`, description: 'Live for the whole workspace.' })
             }
           >
             Publish changes

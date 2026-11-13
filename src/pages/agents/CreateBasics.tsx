@@ -1,10 +1,11 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { cn } from '@/lib/cn';
 import { Icon } from '@/components/icons';
 import { Button, Field, Input, Textarea, useToast } from '@/components/ui';
 import { avatarOptions, colorOptions } from './data';
 import { AgentIcon } from './components/AgentIcon';
 import { WizardStep } from './components/WizardLayout';
+import { readDraft, writeDraft } from '@/lib/agentDraft';
 
 const NAME_MAX = 40;
 const DESCRIPTION_MAX = 120;
@@ -16,14 +17,18 @@ export default function CreateBasics() {
     'Answers customer billing and refund questions using our help docs, and asks a support lead before issuing refunds.',
   );
   const [generating, setGenerating] = useState(false);
-  const [name, setName] = useState('Support Agent');
-  const [tags, setTags] = useState(['support', 'billing']);
+  const [name, setName] = useState(() => readDraft().name);
+  const [tags, setTags] = useState(() => readDraft().tags);
   const [tagDraft, setTagDraft] = useState('');
-  const [description, setDescription] = useState(
-    'Answers billing, order and refund questions from the help docs. Asks before refunds or emails.',
-  );
+  const [description, setDescription] = useState(() => readDraft().description);
   const [avatar, setAvatar] = useState(avatarOptions[0].label);
   const [color, setColor] = useState(colorOptions[0].label);
+
+  // Keep the shared wizard draft in sync so Test & publish can save the real agent.
+  useEffect(() => {
+    const option = avatarOptions.find((a) => a.label === avatar) ?? avatarOptions[0];
+    writeDraft({ name, description, tags, icon: option.icon, tone: option.tone });
+  }, [name, description, tags, avatar]);
 
   const generate = () => {
     setGenerating(true);

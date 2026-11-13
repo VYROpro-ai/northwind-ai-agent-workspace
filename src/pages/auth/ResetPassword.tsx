@@ -9,6 +9,7 @@ import { PasswordInput } from './components/PasswordInput';
 import { PasswordStrength } from './components/PasswordStrength';
 import { signedInUser } from './data';
 import { checkPassword, isEmail } from './password';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 const steps = ['email', 'inbox', 'new', 'done'] as const;
 type Step = (typeof steps)[number];
@@ -20,7 +21,7 @@ export default function ResetPassword() {
   const [params, setParams] = useSearchParams();
   const raw = params.get('step');
   const step: Step = steps.includes(raw as Step) ? (raw as Step) : 'new';
-  const [email, setEmail] = useState(signedInUser.email);
+  const [email, setEmail] = useState(isSupabaseConfigured ? '' : signedInUser.email);
   const go = (next: Step) => setParams({ step: next });
 
   return (
@@ -68,11 +69,28 @@ function EmailStep({
   onNext: () => void;
 }) {
   const [submitted, setSubmitted] = useState(false);
-  const error = submitted && !isEmail(email) ? 'Enter the email you sign in with' : undefined;
-  const onSubmit = (event: FormEvent) => {
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | undefined>(undefined);
+  const error = submitted && !isEmail(email) ? 'Enter the email you sign in with' : sendError;
+  const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitted(true);
-    if (isEmail(email)) onNext();
+    setSendError(undefined);
+    if (!isEmail(email)) return;
+    if (!isSupabaseConfigured || !supabase) {
+      onNext();
+      return;
+    }
+    setSending(true);
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}reset-password?step=new`,
+    });
+    setSending(false);
+    if (resetError) {
+      setSendError(resetError.message);
+      return;
+    }
+    onNext();
   };
   return (
     <form noValidate onSubmit={onSubmit} className="flex flex-col gap-6">
@@ -91,7 +109,7 @@ function EmailStep({
           />
         )}
       </Field>
-      <Button type="submit" size="lg" fullWidth>
+      <Button type="submit" size="lg" fullWidth loading={sending}>
         Send reset link
       </Button>
       <p className="text-center text-body-m text-fg-2">
@@ -122,9 +140,18 @@ function InboxStep({ email, onNext, onBack }: { email: string; onNext: () => voi
         <button
           type="button"
           className={textLink}
-          onClick={() =>
-            toast({ title: 'Reset link sent again', description: `Check ${email}.`, tone: 'ok' })
-          }
+          onClick={async () => {
+            if (isSupabaseConfigured && supabase) {
+              const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}reset-password?step=new`,
+              });
+              if (error) {
+                toast({ tone: 'danger', title: 'Could not resend the link', description: error.message });
+                return;
+              }
+            }
+            toast({ title: 'Reset link sent again', description: `Check ${email}.`, tone: 'ok' });
+          }}
         >
           Resend link
         </button>
@@ -137,20 +164,32 @@ function InboxStep({ email, onNext, onBack }: { email: string; onNext: () => voi
 }
 
 function NewPasswordStep({ email, onNext }: { email: string; onNext: () => void }) {
-  const [password, setPassword] = useState('Harbor#Lights-48');
-  const [confirm, setConfirm] = useState('Harbor#Lights-48');
+  const toast = useToast();
+  const [password, setPassword] = useState(isSupabaseConfigured ? '' : 'Harbor#Lights-48');
+  const [confirm, setConfirm] = useState(isSupabaseConfigured ? '' : 'Harbor#Lights-48');
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const { score } = checkPassword(password);
   const matches = confirm.length > 0 && confirm === password;
   const weak = score < 3;
 
-  const onSubmit = (event: FormEvent) => {
+  const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitted(true);
     if (weak || !matches) return;
+    if (!isSupabaseConfigured || !supabase) {
+      setLoading(true);
+      window.setTimeout(onNext, 600);
+      return;
+    }
     setLoading(true);
-    window.setTimeout(onNext, 600);
+    const { error } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (error) {
+      toast({ tone: 'danger', title: 'Could not update password', description: error.message });
+      return;
+    }
+    onNext();
   };
 
   return (

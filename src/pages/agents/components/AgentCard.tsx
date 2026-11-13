@@ -79,7 +79,7 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
   const toast = useToast();
   const low = agent.success !== null && agent.success < 90;
   const color = low ? 'var(--danger-text)' : toneVar[agent.tone];
-  const href = '/agents/support-agent';
+  const href = `/agents/${agent.id}`;
 
   return (
     <article className="relative flex flex-1 flex-col gap-4 rounded-[20px] border border-border bg-surface px-5 pt-5 pb-4 shadow-[0_1px_2px_rgb(13_16_24/0.04)] transition-shadow hover:shadow-raised">

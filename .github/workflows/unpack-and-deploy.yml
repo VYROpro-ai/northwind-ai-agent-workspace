@@ -58,7 +58,7 @@ jobs:
 
           sub("vite.config.ts",
               "export default defineConfig({\n  plugins:",
-              "export default defineConfig({\n  # GitHub Pages project site\n  base: '/northwind-ai-agent-workspace/',\n  plugins:")
+              "export default defineConfig({\n  // GitHub Pages project site\n  base: '/northwind-ai-agent-workspace/',\n  plugins:")
           sub("src/routes/router.tsx",
               "    ],\n  },\n]);",
               "    ],\n  },\n],\n  { basename: '/northwind-ai-agent-workspace' },\n);")

@@ -1,0 +1,165 @@
+name: Unpack and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  unpack-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Unpack the template zip (first run only)
+        run: |
+          if [ -f package.json ]; then
+            echo "Source already unpacked, skipping."
+            exit 0
+          fi
+          ZIP=$(ls *.zip | head -1)
+          if [ -z "$ZIP" ]; then echo "No zip found and no source yet."; exit 1; fi
+          unzip -q "$ZIP"
+          TEMPLATE=$(find . -maxdepth 3 -type d -name "Northwind-React-Template" | head -1)
+          cp -a "$TEMPLATE"/. .
+          rm -rf Northwind-AI-Agent-Workspace-v1.0.0 "$ZIP"
+          ls
+
+      - name: Apply GitHub Pages fixes
+        run: |
+          if grep -q "base: '/northwind-ai-agent-workspace/'" vite.config.ts; then
+            echo "Pages fixes already applied, skipping."
+            exit 0
+          fi
+          python3 - << 'PY'
+          import pathlib
+
+          def sub(path, old, new):
+              p = pathlib.Path(path)
+              t = p.read_text()
+              assert old in t, f"pattern not found in {path}: {old[:60]!r}"
+              p.write_text(t.replace(old, new))
+              print(f"patched {path}")
+
+          sub("vite.config.ts",
+              "export default defineConfig({\n  plugins:",
+              "export default defineConfig({\n  # GitHub Pages project site\n  base: '/northwind-ai-agent-workspace/',\n  plugins:")
+          sub("src/routes/router.tsx",
+              "    ],\n  },\n]);",
+              "    ],\n  },\n],\n  { basename: '/northwind-ai-agent-workspace' },\n);")
+          sub("src/data/people.ts",
+              "`/images/avatars/${file}.jpg`",
+              "`${import.meta.env.BASE_URL}images/avatars/${file}.jpg`")
+          sub("src/components/brand/Logo.tsx",
+              "url(/images/brand/northwind-logo.svg)",
+              "url(${import.meta.env.BASE_URL}images/brand/northwind-logo.svg)")
+          sub("src/pages/home/FirstRun.tsx",
+              'src="/images/tour-photo.jpg"',
+              'src={`${import.meta.env.BASE_URL}images/tour-photo.jpg`}')
+          print("all Pages fixes applied")
+          PY
+          touch public/.nojekyll
+
+      - name: Add the deploy workflow for future pushes
+        run: |
+          mkdir -p .github/workflows
+          cat > .github/workflows/deploy.yml << 'YAML'
+          name: Deploy to GitHub Pages
+
+          on:
+            push:
+              branches: ["main"]
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+            pages: write
+            id-token: write
+
+          concurrency:
+            group: "pages"
+            cancel-in-progress: false
+
+          jobs:
+            deploy:
+              environment: github-pages
+              runs-on: ubuntu-latest
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v4
+                - name: Set up Node
+                  uses: actions/setup-node@v4
+                  with:
+                    node-version: 22
+                    cache: npm
+                - name: Install dependencies
+                  run: npm ci
+                - name: Build
+                  run: npm run build
+                - name: Add SPA fallback for GitHub Pages
+                  run: cp dist/index.html dist/404.html
+                - name: Setup Pages
+                  uses: actions/configure-pages@v5
+                - name: Upload artifact
+                  uses: actions/upload-pages-artifact@v3
+                  with:
+                    path: "dist"
+                - name: Deploy to GitHub Pages
+                  id: deployment
+                  uses: actions/deploy-pages@v4
+          YAML
+          rm -f .github/workflows/unpack-and-deploy.yml
+
+      - name: Commit the unpacked source
+        run: |
+          if git status --porcelain | grep -q .; then
+            git config user.name "VYRO_Pro"
+            git config user.email "VYRO.pro@proton.me"
+            git add -A
+            git commit -m "Northwind AI Agent Workspace v1.0.0 — GitHub Pages deploy (base + router basename + SPA fallback)"
+            git push origin main
+          else
+            echo "Nothing to commit."
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Add SPA fallback for GitHub Pages
+        run: cp dist/index.html dist/404.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "dist"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

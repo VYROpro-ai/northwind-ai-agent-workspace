@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  # GitHub Pages project site
+  // GitHub Pages project site
   base: '/northwind-ai-agent-workspace/',
   plugins: [react(), tailwindcss()],
   resolve: {

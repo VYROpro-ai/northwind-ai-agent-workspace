@@ -1,0 +1,91 @@
+rules_version = '2';
+
+// Northwind AI Agent Workspace — Firestore security rules (Firebase Spark plan).
+//
+// Tenant rule: a user can only touch rows in a
+// workspace they are a member of (workspace_members). Membership docs use the
+// deterministic composite id `${workspaceId}_${userId}`, so membership and
+// ownership checks are a single document get/exists — no queries, no recursion.
+//
+// Every rule requires a signed-in user (request.auth != null).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function memberDoc(workspaceId) {
+      return /databases/$(database)/documents/workspace_members/$(workspaceId + '_' + request.auth.uid);
+    }
+
+    function isMember(workspaceId) {
+      return isSignedIn() && exists(memberDoc(workspaceId));
+    }
+
+    function isOwner(workspaceId) {
+      return isSignedIn() && get(memberDoc(workspaceId)).data.role == 'owner';
+    }
+
+    // profiles: a user can only see / create / edit their own doc (id == uid).
+    match /profiles/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // workspaces: readable by any member; creatable by the signed-in user who
+    // is recorded as created_by. No update/delete in this MVP.
+    match /workspaces/{workspaceId} {
+      allow get, list: if isMember(workspaceId);
+      allow create: if isSignedIn() && request.resource.data.created_by == request.auth.uid;
+    }
+
+    // workspace_members: a user always sees their own memberships, plus the
+    // memberships of any workspace they belong to. Anyone may insert their own
+    // membership row (used when creating a workspace — the creator adds
+    // themselves as owner). Owners manage rows; any user may delete (leave)
+    // their own membership. Doc ids must be `${workspaceId}_${userId}`.
+    match /workspace_members/{memberId} {
+      allow read: if isSignedIn() && (
+        resource.data.user_id == request.auth.uid || isMember(resource.data.workspace_id)
+      );
+      allow create: if isSignedIn()
+        && request.resource.data.user_id == request.auth.uid
+        && memberId == request.resource.data.workspace_id + '_' + request.resource.data.user_id;
+      allow update: if isSignedIn() && (
+        isOwner(resource.data.workspace_id) || resource.data.user_id == request.auth.uid
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.user_id == request.auth.uid || isOwner(resource.data.workspace_id)
+      );
+    }
+
+    // Business collections: full access for members of the owning workspace,
+    // nothing for anyone else. For creates the workspace is read from the
+    // incoming document; for everything else from the stored document.
+    match /agents/{agentId} {
+      allow read, update, delete: if isMember(resource.data.workspace_id);
+      allow create: if isMember(request.resource.data.workspace_id);
+    }
+
+    match /agent_versions/{versionId} {
+      allow read, update, delete: if isMember(resource.data.workspace_id);
+      allow create: if isMember(request.resource.data.workspace_id);
+    }
+
+    match /chats/{chatId} {
+      allow read, update, delete: if isMember(resource.data.workspace_id);
+      allow create: if isMember(request.resource.data.workspace_id);
+    }
+
+    match /messages/{messageId} {
+      allow read, update, delete: if isMember(resource.data.workspace_id);
+      allow create: if isMember(request.resource.data.workspace_id);
+    }
+
+    match /usage_events/{eventId} {
+      allow read, update, delete: if isMember(resource.data.workspace_id);
+      allow create: if isMember(request.resource.data.workspace_id);
+    }
+  }
+}

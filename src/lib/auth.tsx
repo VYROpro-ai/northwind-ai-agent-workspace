@@ -8,26 +8,48 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
-import { isSupabaseConfigured, supabase } from './supabase';
-import type { WorkspaceRow } from './database.types';
+import {
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  updateProfile,
+  type User,
+} from 'firebase/auth';
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
+import { auth, db, isFirebaseConfigured } from './firebase';
+import type { WorkspaceRow } from './firestore.types';
 
 export interface AuthContextValue {
   user: User | null;
-  session: Session | null;
+  session: { user: User } | null;
   workspace: WorkspaceRow | null;
   workspaceLoading: boolean;
   authLoading: boolean;
   signIn: (
     email: string,
     password: string,
-  ) => Promise<{ error: Error | null; session: Session | null }>;
+  ) => Promise<{ error: Error | null; session: { user: User } | null }>;
   signUp: (
     email: string,
     password: string,
     fullName: string,
-  ) => Promise<{ error: Error | null; session: Session | null }>;
+  ) => Promise<{ error: Error | null; session: { user: User } | null }>;
   signOut: () => Promise<void>;
+  getAccessToken: () => Promise<string | null>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -42,73 +64,88 @@ const slugify = (value: string) =>
 /**
  * After login, use the user's earliest workspace; otherwise create one named
  * "<Name|email prefix> Workspace" with the user as owner, and upsert the profile.
- * Everything is a no-op in demo mode (no Supabase configured).
+ * Everything is a no-op in demo mode (no Firebase configured).
+ *
+ * workspace_members docs use the deterministic composite id
+ * `${workspaceId}_${userId}` — the Firestore security rules depend on it.
  */
 async function ensureWorkspace(user: User): Promise<WorkspaceRow | null> {
-  if (!supabase) return null;
+  if (!db) return null;
 
-  // Upsert the profile row first so it exists either way.
-  const fullName =
-    (user.user_metadata?.full_name as string | undefined) ??
-    (user.user_metadata?.name as string | undefined) ??
-    null;
-  await supabase
-    .from('profiles')
-    .upsert({ id: user.id, email: user.email ?? '', full_name: fullName }, { onConflict: 'id' });
+  const now = new Date().toISOString();
 
-  const { data: memberships } = await supabase
-    .from('workspace_members')
-    .select('workspace_id, workspaces(id, name, slug, created_by)')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: true });
+  // Upsert the profile doc first so it exists either way.
+  const fullName = user.displayName ?? null;
+  await setDoc(
+    doc(db, 'profiles', user.uid),
+    { id: user.uid, email: user.email ?? '', full_name: fullName, avatar_url: user.photoURL ?? null },
+    { merge: true },
+  );
 
-  const existing = (memberships ?? [])
-    .map((m) => (m as unknown as { workspaces: WorkspaceRow | null }).workspaces)
-    .filter((w): w is WorkspaceRow => Boolean(w));
-  if (existing.length > 0) return existing[0];
+  const membershipsSnap = await getDocs(
+    query(
+      collection(db, 'workspace_members'),
+      where('user_id', '==', user.uid),
+      orderBy('created_at', 'asc'),
+    ),
+  );
+  for (const memberDoc of membershipsSnap.docs) {
+    const workspaceId = (memberDoc.data() as { workspace_id?: string }).workspace_id;
+    if (!workspaceId) continue;
+    const wsSnap = await getDoc(doc(db, 'workspaces', workspaceId));
+    if (wsSnap.exists()) {
+      const data = wsSnap.data() as Omit<WorkspaceRow, 'id'>;
+      return { id: wsSnap.id, ...data };
+    }
+  }
 
   const baseName = fullName?.trim() || (user.email ?? 'user').split('@')[0];
   const name = `${baseName} Workspace`;
-  const slug = `${slugify(baseName)}-workspace-${user.id.slice(0, 8)}`;
+  const slug = `${slugify(baseName)}-workspace-${user.uid.slice(0, 8)}`;
 
-  const { data: created, error } = await supabase
-    .from('workspaces')
-    .insert({ name, slug, created_by: user.id })
-    .select('id, name, slug, created_by')
-    .single();
-  if (error || !created) return null;
+  const createdRef = await addDoc(collection(db, 'workspaces'), {
+    name,
+    slug,
+    created_by: user.uid,
+    created_at: now,
+    updated_at: now,
+  });
 
-  await supabase
-    .from('workspace_members')
-    .insert({ workspace_id: (created as WorkspaceRow).id, user_id: user.id, role: 'owner' });
-  return created as WorkspaceRow;
+  await setDoc(doc(db, 'workspace_members', `${createdRef.id}_${user.uid}`), {
+    workspace_id: createdRef.id,
+    user_id: user.uid,
+    role: 'owner',
+    created_at: now,
+  });
+
+  return { id: createdRef.id, name, slug, created_by: user.uid };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<{ user: User } | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceRow | null>(null);
-  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
+  const [authLoading, setAuthLoading] = useState(isFirebaseConfigured);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const ensuredFor = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!supabase) {
+    if (!auth) {
       setAuthLoading(false);
       return;
     }
     let cancelled = false;
 
-    const applySession = (next: Session | null) => {
+    const applyUser = (next: User | null) => {
       if (cancelled) return;
-      setSession(next);
-      setUser(next?.user ?? null);
+      setSession(next ? { user: next } : null);
+      setUser(next);
       setAuthLoading(false);
-      if (next?.user) {
-        if (ensuredFor.current !== next.user.id) {
-          ensuredFor.current = next.user.id;
+      if (next) {
+        if (ensuredFor.current !== next.uid) {
+          ensuredFor.current = next.uid;
           setWorkspaceLoading(true);
-          void ensureWorkspace(next.user).then((w) => {
+          void ensureWorkspace(next).then((w) => {
             if (!cancelled) {
               setWorkspace(w);
               setWorkspaceLoading(false);
@@ -122,41 +159,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    void supabase.auth.getSession().then(({ data }) => applySession(data.session ?? null));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => applySession(next));
+    const unsubscribe = onAuthStateChanged(auth, applyUser);
     return () => {
       cancelled = true;
-      listener.subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    if (!supabase) return { error: new Error('Supabase is not configured'), session: null };
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error as Error | null, session: data.session };
+    if (!auth) return { error: new Error('Firebase is not configured'), session: null };
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      return { error: null, session: { user: cred.user } };
+    } catch (e) {
+      return { error: e as Error, session: null };
+    }
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, fullName: string) => {
-    if (!supabase) return { error: new Error('Supabase is not configured'), session: null };
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
-    });
-    return { error: error as Error | null, session: data.session };
+    if (!auth) return { error: new Error('Firebase is not configured'), session: null };
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(cred.user, { displayName: fullName });
+      return { error: null, session: { user: cred.user } };
+    } catch (e) {
+      return { error: e as Error, session: null };
+    }
   }, []);
 
   const signOut = useCallback(async () => {
-    if (supabase) await supabase.auth.signOut();
+    if (auth) await firebaseSignOut(auth);
     ensuredFor.current = null;
     setUser(null);
     setSession(null);
     setWorkspace(null);
   }, []);
 
+  const getAccessToken = useCallback(async (): Promise<string | null> => {
+    const current = auth?.currentUser;
+    if (!current) return null;
+    try {
+      return await current.getIdToken();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const signInWithGoogle = useCallback(async () => {
+    if (!auth) return { error: new Error('Firebase is not configured') };
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+      return { error: null };
+    } catch (e) {
+      return { error: e as Error };
+    }
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user, session, workspace, workspaceLoading, authLoading, signIn, signUp, signOut }),
-    [user, session, workspace, workspaceLoading, authLoading, signIn, signUp, signOut],
+    () => ({
+      user,
+      session,
+      workspace,
+      workspaceLoading,
+      authLoading,
+      signIn,
+      signUp,
+      signOut,
+      getAccessToken,
+      signInWithGoogle,
+    }),
+    [
+      user,
+      session,
+      workspace,
+      workspaceLoading,
+      authLoading,
+      signIn,
+      signUp,
+      signOut,
+      getAccessToken,
+      signInWithGoogle,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

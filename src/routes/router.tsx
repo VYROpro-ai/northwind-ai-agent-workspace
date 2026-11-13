@@ -2,7 +2,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate, Outlet, ScrollRestoration } from 'react-router';
 import { Spinner } from '@/components/ui/Spinner';
 import { useAuth } from '@/lib/auth';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isFirebaseConfigured } from '@/lib/firebase';
 import { screens } from './screens';
 
 const ScreensIndex = lazy(() => import('@/pages/ScreensIndex'));
@@ -30,7 +30,7 @@ function Root() {
   );
 }
 
-/** Routes that stay public even when Supabase is configured. */
+/** Routes that stay public even when Firebase is configured. */
 const PUBLIC_PATHS = new Set([
   '/sign-in',
   '/sign-up',
@@ -42,12 +42,12 @@ const PUBLIC_PATHS = new Set([
 ]);
 
 /**
- * Demo mode (no env vars): everything is visible, as today. Configured mode:
+ * Demo mode (no Firebase env vars): everything is visible, as today. Configured mode:
  * show a spinner while auth resolves, then redirect anonymous visitors to /sign-in.
  */
 function RequireAuth() {
   const { authLoading, session } = useAuth();
-  if (!isSupabaseConfigured) return <Outlet />;
+  if (!isFirebaseConfigured) return <Outlet />;
   if (authLoading) return <PageFallback />;
   if (!session) return <Navigate to="/sign-in" replace />;
   return <Outlet />;

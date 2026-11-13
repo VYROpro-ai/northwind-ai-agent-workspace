@@ -7,7 +7,7 @@ import { PasswordInput } from './components/PasswordInput';
 import { SocialButtons } from './components/SocialButtons';
 import { isEmail } from './password';
 import { useAuth } from '@/lib/auth';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { isFirebaseConfigured } from '@/lib/firebase';
 
 const textLink = 'font-medium text-link hover:underline underline-offset-2';
 
@@ -15,7 +15,7 @@ const textLink = 'font-medium text-link hover:underline underline-offset-2';
 export default function SignIn() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { user, signIn } = useAuth();
+  const { user, signIn, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
@@ -36,7 +36,7 @@ export default function SignIn() {
     setSubmitted(true);
     setAuthError(undefined);
     if (!isEmail(email) || !password) return;
-    if (!isSupabaseConfigured) {
+    if (!isFirebaseConfigured) {
       // Demo mode keeps the template's behaviour: a short pause, then home.
       setLoading(true);
       window.setTimeout(() => navigate('/'), 600);
@@ -53,11 +53,11 @@ export default function SignIn() {
   };
 
   const onGoogle = async () => {
-    if (!isSupabaseConfigured || !supabase) {
+    if (!isFirebaseConfigured) {
       navigate('/');
       return;
     }
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+    const { error } = await signInWithGoogle();
     if (error) toast({ tone: 'danger', title: 'Google sign-in failed', description: error.message });
   };
 

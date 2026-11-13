@@ -21,7 +21,7 @@ import {
 } from './data';
 import { getAgentSummary } from '@/lib/agents';
 import { useAuth } from '@/lib/auth';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isFirebaseConfigured } from '@/lib/firebase';
 import { AgentHeader } from './components/AgentHeader';
 import { ArchiveDialog } from './components/ArchiveDialog';
 import { RunsChart } from './components/RunsChart';
@@ -62,7 +62,7 @@ export default function AgentDetail({ dialog }: { dialog?: AgentDialog }) {
   const mock: AgentSummary = agents.find((a) => a.id === (id ?? 'support-agent')) ?? agents[0];
   const [real, setReal] = useState<AgentSummary | null>(null);
   useEffect(() => {
-    if (!isSupabaseConfigured || !workspace || !id || id === 'support-agent') return;
+    if (!isFirebaseConfigured || !workspace || !id || id === 'support-agent') return;
     let cancelled = false;
     void getAgentSummary(workspace.id, id).then((row) => {
       if (!cancelled && row) setReal(row);

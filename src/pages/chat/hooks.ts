@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMediaQuery } from '@/lib/hooks';
 import { cannedReply } from './data';
 import { useAuth } from '@/lib/auth';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { isFirebaseConfigured } from '@/lib/firebase';
 import { createChat, listMessages, streamChat } from '@/lib/chats';
 
 /** True when the user asked the OS for less motion. */
@@ -119,7 +119,7 @@ export interface RealAgentConfig {
 /**
  * Real chat thread: same shape as useChatThread, plus streaming state, the chat id
  * and any error. Creates a chat row on first send (when the agent has a DB id),
- * streams the assistant reply via the `chat` Edge Function and lets the function
+ * streams the assistant reply via the `chat` Cloud Function and lets the function
  * persist messages + usage — this client never inserts messages itself.
  * With a null agent, send() is a no-op.
  */
@@ -127,7 +127,7 @@ export function useRealChatThread(
   agent: RealAgentConfig | null,
   opts?: { resetKey?: string | number; chatId?: string },
 ) {
-  const { workspace } = useAuth();
+  const { workspace, getAccessToken } = useAuth();
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [thinking, setThinking] = useState(false);
   const [streaming, setStreaming] = useState(false);
@@ -159,7 +159,7 @@ export function useRealChatThread(
 
   // Load an existing chat's history (route /chat/:id).
   useEffect(() => {
-    if (!existingChatId || !isSupabaseConfigured) return;
+    if (!existingChatId || !isFirebaseConfigured) return;
     let cancelled = false;
     void listMessages(existingChatId).then((rows) => {
       if (cancelled) return;
@@ -192,9 +192,7 @@ export function useRealChatThread(
       streamingIdRef.current = agentMsgId;
       setMessages((list) => [...list, { id: agentMsgId, role: 'agent', text: '', time }]);
       try {
-        if (!supabase) throw new Error('Supabase is not configured');
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
+        const token = await getAccessToken();
         if (!token) throw new Error('You are signed out. Sign in again to chat.');
         let cid = chatIdRef.current;
         if (!cid && agent.id && workspace) {
@@ -228,7 +226,7 @@ export function useRealChatThread(
         streamingIdRef.current = null;
       }
     },
-    [agent, thinking, workspace],
+    [agent, thinking, workspace, getAccessToken],
   );
 
   return {

@@ -1,4 +1,12 @@
-import { isSupabaseConfigured, supabase, supabaseAnonKey, supabaseUrl } from './supabase';
+import {
+  addDoc,
+  collection,
+  getDocs,
+  orderBy,
+  query,
+  where,
+} from 'firebase/firestore';
+import { auth, db, isFirebaseConfigured } from './firebase';
 import type { ThreadMessage } from '@/pages/chat/hooks';
 
 export interface ChatUsage {
@@ -19,8 +27,14 @@ export interface StreamChatOptions {
   onDelta: (textSoFar: string) => void;
 }
 
-function chatFunctionUrl() {
-  return `${supabaseUrl.replace(/\/$/, '')}/functions/v1/chat`;
+function chatFunctionUrl(): string {
+  const url = import.meta.env.VITE_FIREBASE_CHAT_URL as string | undefined;
+  if (!url) {
+    throw new Error(
+      'VITE_FIREBASE_CHAT_URL is not set — the chat Cloud Function URL is not configured',
+    );
+  }
+  return url;
 }
 
 export async function createChat(
@@ -28,52 +42,71 @@ export async function createChat(
   agentId: string | null,
   title: string,
 ): Promise<string | null> {
-  if (!isSupabaseConfigured || !supabase) return null;
-  const { data: auth } = await supabase.auth.getUser();
-  const userId = auth.user?.id;
+  if (!isFirebaseConfigured || !db) return null;
+  const userId = auth?.currentUser?.uid;
   if (!userId) return null;
-  const { data, error } = await supabase
-    .from('chats')
-    .insert({ workspace_id: workspaceId, agent_id: agentId, user_id: userId, title })
-    .select('id')
-    .single();
-  if (error || !data) return null;
-  return (data as { id: string }).id;
+  const now = new Date().toISOString();
+  const ref = await addDoc(collection(db, 'chats'), {
+    workspace_id: workspaceId,
+    agent_id: agentId,
+    user_id: userId,
+    title,
+    created_at: now,
+    updated_at: now,
+  });
+  return ref.id;
 }
 
 export async function listChats(workspaceId: string) {
-  if (!isSupabaseConfigured || !supabase) return [];
-  const { data, error } = await supabase
-    .from('chats')
-    .select('id, workspace_id, agent_id, user_id, title')
-    .eq('workspace_id', workspaceId)
-    .order('id', { ascending: false });
-  if (error || !data) return [];
-  return data as { id: string; workspace_id: string; agent_id: string | null; user_id: string; title: string | null }[];
+  if (!isFirebaseConfigured || !db) return [];
+  const snap = await getDocs(
+    query(
+      collection(db, 'chats'),
+      where('workspace_id', '==', workspaceId),
+      orderBy('created_at', 'desc'),
+    ),
+  );
+  return snap.docs.map((d) => {
+    const data = d.data() as {
+      workspace_id: string;
+      agent_id: string | null;
+      user_id: string;
+      title: string | null;
+    };
+    return {
+      id: d.id,
+      workspace_id: data.workspace_id,
+      agent_id: data.agent_id,
+      user_id: data.user_id,
+      title: data.title,
+    };
+  });
 }
 
 /** Messages of a chat, mapped to the ThreadMessage shape used by the chat UI. */
 export async function listMessages(chatId: string): Promise<ThreadMessage[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
-  const { data, error } = await supabase
-    .from('messages')
-    .select('role, content, created_at')
-    .eq('chat_id', chatId)
-    .order('created_at', { ascending: true });
-  if (error || !data) return [];
+  if (!isFirebaseConfigured || !db) return [];
+  const snap = await getDocs(
+    query(
+      collection(db, 'messages'),
+      where('chat_id', '==', chatId),
+      orderBy('created_at', 'asc'),
+    ),
+  );
   const timeFormat = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' });
-  return (
-    data as { role: 'user' | 'assistant'; content: string; created_at: string }[]
-  ).map((m, i) => ({
-    id: i + 1,
-    role: m.role === 'assistant' ? 'agent' : 'user',
-    text: m.content,
-    time: timeFormat.format(new Date(m.created_at)),
-  }));
+  return snap.docs.map((d, i) => {
+    const m = d.data() as { role: 'user' | 'assistant'; content: string; created_at: string };
+    return {
+      id: i + 1,
+      role: m.role === 'assistant' ? 'agent' : 'user',
+      text: m.content,
+      time: timeFormat.format(new Date(m.created_at)),
+    };
+  });
 }
 
 /**
- * POSTs to the `chat` Edge Function and parses its SSE stream. Calls onDelta with
+ * POSTs to the `chat` Cloud Function and parses its SSE stream. Calls onDelta with
  * the full accumulated assistant text as chunks arrive; resolves with the usage
  * object from the final `done` frame. The function persists messages + usage
  * when chatId is provided — this client never inserts messages itself.
@@ -92,7 +125,6 @@ export async function streamChat({
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
-      apikey: supabaseAnonKey,
     },
     body: JSON.stringify({ agentId, agent, messages, chatId }),
     signal,

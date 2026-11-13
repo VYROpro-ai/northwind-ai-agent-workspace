@@ -9,10 +9,20 @@ import { PasswordInput } from './components/PasswordInput';
 import { PasswordStrength } from './components/PasswordStrength';
 import { signedInUser } from './data';
 import { checkPassword, isEmail } from './password';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { confirmPasswordReset, sendPasswordResetEmail, updatePassword } from 'firebase/auth';
+import { auth, isFirebaseConfigured } from '@/lib/firebase';
 
 const steps = ['email', 'inbox', 'new', 'done'] as const;
 type Step = (typeof steps)[number];
+
+/** The reset link must bring the user back to this page with the Firebase
+ *  `oobCode` attached, so the new-password step can confirm it. Built from the
+ *  current origin so it works on GitHub Pages and on Vercel alike — the host
+ *  domain must be added to Firebase Auth's Authorized domains in the console. */
+function resetContinueUrl(): string {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+  return `${window.location.origin}${base}/reset-password?step=new`;
+}
 
 const textLink = 'font-medium text-link underline-offset-2 hover:underline';
 
@@ -21,8 +31,14 @@ export default function ResetPassword() {
   const [params, setParams] = useSearchParams();
   const raw = params.get('step');
   const step: Step = steps.includes(raw as Step) ? (raw as Step) : 'new';
-  const [email, setEmail] = useState(isSupabaseConfigured ? '' : signedInUser.email);
-  const go = (next: Step) => setParams({ step: next });
+  const [email, setEmail] = useState(isFirebaseConfigured ? '' : signedInUser.email);
+  // Preserve the Firebase oobCode (and any other params) when moving between steps.
+  const go = (next: Step) =>
+    setParams((prev) => {
+      const nextParams = new URLSearchParams(prev);
+      nextParams.set('step', next);
+      return nextParams;
+    });
 
   return (
     <AuthLayout screen="reset" title="Reset password">
@@ -30,7 +46,9 @@ export default function ResetPassword() {
         <StepProgress current={steps.indexOf(step) + 1} />
         {step === 'email' && <EmailStep email={email} onEmail={setEmail} onNext={() => go('inbox')} />}
         {step === 'inbox' && <InboxStep email={email} onNext={() => go('new')} onBack={() => go('email')} />}
-        {step === 'new' && <NewPasswordStep email={email} onNext={() => go('done')} />}
+        {step === 'new' && (
+          <NewPasswordStep email={email} oobCode={params.get('oobCode')} onNext={() => go('done')} />
+        )}
         {step === 'done' && <DoneStep />}
       </div>
     </AuthLayout>
@@ -77,19 +95,19 @@ function EmailStep({
     setSubmitted(true);
     setSendError(undefined);
     if (!isEmail(email)) return;
-    if (!isSupabaseConfigured || !supabase) {
+    if (!isFirebaseConfigured || !auth) {
       onNext();
       return;
     }
     setSending(true);
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}reset-password?step=new`,
-    });
-    setSending(false);
-    if (resetError) {
-      setSendError(resetError.message);
+    try {
+      await sendPasswordResetEmail(auth, email, { url: resetContinueUrl(), handleCodeInApp: false });
+    } catch (e) {
+      setSending(false);
+      setSendError(e instanceof Error ? e.message : 'Could not send the reset link');
       return;
     }
+    setSending(false);
     onNext();
   };
   return (
@@ -130,8 +148,7 @@ function InboxStep({ email, onNext, onBack }: { email: string; onNext: () => voi
         <Icon name="mail" size={24} />
       </span>
       <AuthHeading title="Check your inbox">
-        We sent a reset link to <strong className="font-semibold text-fg">{email}</strong>. It expires in 30
-        minutes.
+        We sent a reset link to <strong className="font-semibold text-fg">{email}</strong>.
       </AuthHeading>
       <Button size="lg" fullWidth onClick={onNext}>
         I’ve opened the link
@@ -141,12 +158,18 @@ function InboxStep({ email, onNext, onBack }: { email: string; onNext: () => voi
           type="button"
           className={textLink}
           onClick={async () => {
-            if (isSupabaseConfigured && supabase) {
-              const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}reset-password?step=new`,
-              });
-              if (error) {
-                toast({ tone: 'danger', title: 'Could not resend the link', description: error.message });
+            if (isFirebaseConfigured && auth) {
+              try {
+                await sendPasswordResetEmail(auth, email, {
+                  url: resetContinueUrl(),
+                  handleCodeInApp: false,
+                });
+              } catch (e) {
+                toast({
+                  tone: 'danger',
+                  title: 'Could not resend the link',
+                  description: e instanceof Error ? e.message : 'Unknown error',
+                });
                 return;
               }
             }
@@ -163,10 +186,18 @@ function InboxStep({ email, onNext, onBack }: { email: string; onNext: () => voi
   );
 }
 
-function NewPasswordStep({ email, onNext }: { email: string; onNext: () => void }) {
+function NewPasswordStep({
+  email,
+  oobCode,
+  onNext,
+}: {
+  email: string;
+  oobCode: string | null;
+  onNext: () => void;
+}) {
   const toast = useToast();
-  const [password, setPassword] = useState(isSupabaseConfigured ? '' : 'Harbor#Lights-48');
-  const [confirm, setConfirm] = useState(isSupabaseConfigured ? '' : 'Harbor#Lights-48');
+  const [password, setPassword] = useState(isFirebaseConfigured ? '' : 'Harbor#Lights-48');
+  const [confirm, setConfirm] = useState(isFirebaseConfigured ? '' : 'Harbor#Lights-48');
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const { score } = checkPassword(password);
@@ -177,18 +208,41 @@ function NewPasswordStep({ email, onNext }: { email: string; onNext: () => void 
     event.preventDefault();
     setSubmitted(true);
     if (weak || !matches) return;
-    if (!isSupabaseConfigured || !supabase) {
+    if (!isFirebaseConfigured || !auth) {
       setLoading(true);
       window.setTimeout(onNext, 600);
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setLoading(false);
-    if (error) {
-      toast({ tone: 'danger', title: 'Could not update password', description: error.message });
+    // The reset link brings the user back here with a Firebase oobCode — confirm
+    // the password with it. Fall back to updatePassword only for a user who is
+    // already signed in (e.g. resetting from inside the app).
+    const currentUser = auth.currentUser;
+    if (!oobCode && !currentUser) {
+      setLoading(false);
+      toast({
+        tone: 'danger',
+        title: 'Could not update password',
+        description: 'Your reset link has expired or you are not signed in. Request a new link.',
+      });
       return;
     }
+    try {
+      if (oobCode) {
+        await confirmPasswordReset(auth, oobCode, password);
+      } else if (currentUser) {
+        await updatePassword(currentUser, password);
+      }
+    } catch (e) {
+      setLoading(false);
+      toast({
+        tone: 'danger',
+        title: 'Could not update password',
+        description: e instanceof Error ? e.message : 'Unknown error',
+      });
+      return;
+    }
+    setLoading(false);
     onNext();
   };
 

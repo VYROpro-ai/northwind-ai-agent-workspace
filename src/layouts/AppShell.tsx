@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/cn';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isFirebaseConfigured } from '@/lib/firebase';
 import { useDocumentTitle } from '@/lib/hooks';
 import { Drawer } from '@/components/ui/Overlay';
 import { Sidebar } from '@/components/app/Sidebar';
@@ -91,7 +91,7 @@ export function AppShell({
             role={role}
             extra={
               extra ??
-              (!isSupabaseConfigured ? (
+              (!isFirebaseConfigured ? (
                 <span className="hidden shrink-0 items-center rounded-full border border-border bg-subtle px-2.5 py-1 text-body-s font-medium text-fg-2 sm:inline-flex">
                   Demo data
                 </span>

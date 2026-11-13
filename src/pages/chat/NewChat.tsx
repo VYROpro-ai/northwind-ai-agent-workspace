@@ -10,7 +10,7 @@ import { PromptLibraryDrawer } from './components/PromptLibraryDrawer';
 import { agents, starters, type AgentId } from './data';
 import { useChatThread, useRealChatThread, type RealAgentConfig } from './hooks';
 import { useAuth } from '@/lib/auth';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isFirebaseConfigured } from '@/lib/firebase';
 import { getAgent, listAgents } from '@/lib/agents';
 import { useToast } from '@/components/ui';
 
@@ -37,7 +37,7 @@ export default function NewChat({ overlay }: NewChatProps) {
   // Real agents for the workspace (configured mode only); matched to the picker by name.
   const [realAgents, setRealAgents] = useState<RealAgentConfig[]>([]);
   useEffect(() => {
-    if (!isSupabaseConfigured || !workspace) return;
+    if (!isFirebaseConfigured || !workspace) return;
     let cancelled = false;
     void listAgents(workspace.id).then((rows) => {
       if (cancelled || !rows) return;
@@ -57,7 +57,7 @@ export default function NewChat({ overlay }: NewChatProps) {
     const match = realAgents.find(
       (a) => a.name.toLowerCase() === agents[agentId].name.toLowerCase(),
     );
-    if (!match || !workspace || !isSupabaseConfigured) {
+    if (!match || !workspace || !isFirebaseConfigured) {
       setMatchedAgent(null);
       return;
     }
@@ -79,7 +79,7 @@ export default function NewChat({ overlay }: NewChatProps) {
 
   const demo = useChatThread();
   const real = useRealChatThread(matchedAgent, { resetKey: agentId, chatId: chatIdParam });
-  const useReal = isSupabaseConfigured && Boolean(matchedAgent);
+  const useReal = isFirebaseConfigured && Boolean(matchedAgent);
   const { messages, thinking, send } = useReal ? real : demo;
   const agent = agents[agentId];
   const me = userForRole.member;

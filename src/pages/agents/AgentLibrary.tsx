@@ -23,7 +23,7 @@ import { formatNumber } from '@/lib/format';
 import { agentCount, agents, type AgentSummary } from './data';
 import { listAgents } from '@/lib/agents';
 import { useAuth } from '@/lib/auth';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isFirebaseConfigured } from '@/lib/firebase';
 import { AgentCard, AgentStatusLabel } from './components/AgentCard';
 import { AgentIcon } from './components/AgentIcon';
 import { FilterMenu } from './components/FilterMenu';
@@ -106,7 +106,7 @@ export default function AgentLibrary() {
   const [realAgents, setRealAgents] = useState<AgentSummary[] | null>(null);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !workspace) return;
+    if (!isFirebaseConfigured || !workspace) return;
     let cancelled = false;
     void listAgents(workspace.id).then((rows) => {
       if (!cancelled && rows) setRealAgents(rows);

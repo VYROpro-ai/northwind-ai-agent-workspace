@@ -8,7 +8,7 @@ import { PasswordStrength } from './components/PasswordStrength';
 import { SocialButtons } from './components/SocialButtons';
 import { checkPassword, isEmail } from './password';
 import { useAuth } from '@/lib/auth';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { isFirebaseConfigured } from '@/lib/firebase';
 
 const textLink = 'font-medium text-link hover:underline underline-offset-2';
 
@@ -16,7 +16,7 @@ const textLink = 'font-medium text-link hover:underline underline-offset-2';
 export default function SignUp() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { user, signUp } = useAuth();
+  const { user, signUp, signInWithGoogle } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -44,7 +44,7 @@ export default function SignUp() {
     setSubmitted(true);
     setAuthError(undefined);
     if (!name.trim() || !isEmail(email) || !passwordOk || !agreed) return;
-    if (!isSupabaseConfigured) {
+    if (!isFirebaseConfigured) {
       // Demo mode keeps the template's behaviour: a short pause, then verify-email.
       setLoading(true);
       window.setTimeout(() => navigate('/verify-email'), 600);
@@ -62,11 +62,11 @@ export default function SignUp() {
   };
 
   const onGoogle = async () => {
-    if (!isSupabaseConfigured || !supabase) {
+    if (!isFirebaseConfigured) {
       navigate('/onboarding/workspace');
       return;
     }
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+    const { error } = await signInWithGoogle();
     if (error) toast({ tone: 'danger', title: 'Google sign-up failed', description: error.message });
   };
 

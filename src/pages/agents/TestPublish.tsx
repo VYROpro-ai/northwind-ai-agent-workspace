@@ -10,7 +10,7 @@ import { ChatTurnView, CiteMark, TestAgentMessage, TestUserMessage } from './com
 import { useTestConversation } from './components/useTestConversation';
 import { WizardLayout } from './components/WizardLayout';
 import { useAuth } from '@/lib/auth';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { isFirebaseConfigured } from '@/lib/firebase';
 import { createAgent, publishAgent } from '@/lib/agents';
 import { streamChat } from '@/lib/chats';
 import { clearDraft, readDraft } from '@/lib/agentDraft';
@@ -110,7 +110,7 @@ function FirstReply({ approval, onDecide }: { approval: Approval; onDecide: (a: 
 export default function TestPublish() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { workspace } = useAuth();
+  const { workspace, getAccessToken } = useAuth();
   const { turns, typing, ask, reset } = useTestConversation([]);
   const [approval, setApproval] = useState<Approval>('pending');
   const [access, setAccess] = useState<Access>('team');
@@ -120,7 +120,7 @@ export default function TestPublish() {
   const [publishing, setPublishing] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
-  // Real test chat (configured mode): streams the draft agent via the Edge Function.
+  // Real test chat (configured mode): streams the draft agent via the Cloud Function.
   const [realTurns, setRealTurns] = useState<ChatTurn[]>([]);
   const [realTyping, setRealTyping] = useState(false);
   const [realStreaming, setRealStreaming] = useState('');
@@ -128,15 +128,14 @@ export default function TestPublish() {
 
   const askReal = async (text: string) => {
     const question = text.trim();
-    if (!question || realTyping || !supabase) return;
+    if (!question || realTyping) return;
     const next: ChatTurn[] = [...realTurns, { id: Date.now(), from: 'user', text: question }];
     setRealTurns(next);
     setRealTyping(true);
     setRealStreaming('');
     let streamed = '';
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
+      const token = await getAccessToken();
       if (!token) throw new Error('You are signed out. Sign in again to test.');
       const usage = await streamChat({
         agent: {
@@ -197,7 +196,7 @@ export default function TestPublish() {
 
   const publish = async () => {
     const who = accessOptions.find((o) => o.value === access)?.label ?? '';
-    if (!isSupabaseConfigured || !workspace) {
+    if (!isFirebaseConfigured || !workspace) {
       // Demo mode keeps the template's behaviour: a short pause, then the mock detail page.
       setPublishing(true);
       window.setTimeout(() => {
@@ -275,7 +274,7 @@ export default function TestPublish() {
             label="Test message"
             placeholder="Send a test message…"
             busy={typing || realTyping}
-            onSend={isSupabaseConfigured ? askReal : ask}
+            onSend={isFirebaseConfigured ? askReal : ask}
           />
         </div>
       </section>

@@ -1,0 +1,625 @@
+@import 'tailwindcss';
+
+/*
+ * Northwind design tokens
+ * ---------------------------------------------------------------------------
+ * Two layers, mirroring the Figma kit:
+ *   1. Primitives  (--slate-50 … --sky-950)  — raw palette, never used in screens.
+ *   2. Semantic    (--surface, --fg-2, --brand …) — remapped per theme.
+ * Screens and components only use semantic tokens through Tailwind utilities,
+ * e.g. `bg-surface`, `text-fg-2`, `border-border`, `bg-ai-subtle`.
+ * Dark mode is toggled with the `.dark` class on <html>.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------- Fonts (Geist, SIL OFL 1.1 — see /public/fonts/LICENSE.txt) ---------- */
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/fonts/GeistMono-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-display: swap;
+}
+
+/* ---------- 1. Primitives ---------- */
+:root {
+  --white: #ffffff;
+
+  --slate-50: #f7f8fa;
+  --slate-100: #eff1f5;
+  --slate-200: #e2e5ec;
+  --slate-300: #cbd0da;
+  --slate-400: #9aa2b1;
+  --slate-500: #6b7385;
+  --slate-600: #4f5768;
+  --slate-700: #3a4152;
+  --slate-800: #262c3a;
+  --slate-900: #171b26;
+  --slate-950: #0d1018;
+
+  --cobalt-50: #eef3ff;
+  --cobalt-100: #dce6ff;
+  --cobalt-200: #bcceff;
+  --cobalt-300: #8faeff;
+  --cobalt-400: #5e86fa;
+  --cobalt-500: #3a63f0;
+  --cobalt-600: #2649d6;
+  --cobalt-700: #1e39ad;
+  --cobalt-800: #1d3289;
+  --cobalt-900: #1c2d6b;
+  --cobalt-950: #131c42;
+
+  --violet-50: #f5f2ff;
+  --violet-100: #ede7ff;
+  --violet-200: #dcd1ff;
+  --violet-300: #c2aeff;
+  --violet-400: #a283fc;
+  --violet-500: #8758f5;
+  --violet-600: #7339e8;
+  --violet-700: #602bc9;
+  --violet-800: #4f25a3;
+  --violet-900: #412282;
+  --violet-950: #281257;
+
+  --green-50: #ecfdf3;
+  --green-100: #d1fadf;
+  --green-200: #a6f0c4;
+  --green-300: #6bdf9f;
+  --green-400: #34c77a;
+  --green-500: #14a85e;
+  --green-600: #0b884b;
+  --green-700: #0b6c3e;
+  --green-800: #0e5634;
+  --green-900: #0d472c;
+  --green-950: #042817;
+
+  --amber-50: #fff8eb;
+  --amber-100: #feedc7;
+  --amber-200: #fdd98a;
+  --amber-300: #fcbf4d;
+  --amber-400: #f9a524;
+  --amber-500: #ec870b;
+  --amber-600: #cc6406;
+  --amber-700: #a34709;
+  --amber-800: #84380f;
+  --amber-900: #6d2f10;
+  --amber-950: #3e1603;
+
+  --red-50: #fef2f2;
+  --red-100: #fee2e1;
+  --red-200: #fecbc9;
+  --red-300: #fca5a2;
+  --red-400: #f7716c;
+  --red-500: #ee4640;
+  --red-600: #da2d27;
+  --red-700: #b7221d;
+  --red-800: #97211d;
+  --red-900: #7d211e;
+  --red-950: #440c0a;
+
+  --sky-50: #eff9ff;
+  --sky-100: #def1ff;
+  --sky-200: #b6e5ff;
+  --sky-300: #75d1ff;
+  --sky-400: #2cbafd;
+  --sky-500: #02a0ea;
+  --sky-600: #0080c8;
+  --sky-700: #0066a2;
+  --sky-800: #055686;
+  --sky-900: #0a486f;
+  --sky-950: #072e4a;
+
+  --orange-500: #f26b3a;
+}
+
+/* ---------- 2. Semantic tokens — Light ---------- */
+:root {
+  color-scheme: light;
+
+  /* Backgrounds */
+  --canvas: #f3f4f7;
+  --page: #eceef3;
+  --surface: var(--white);
+  --raised: var(--white);
+  --sunken: var(--slate-50);
+  --subtle: var(--slate-100);
+  --panel: #f3f4f7;
+  --inverse: var(--slate-950);
+  --on-inverse: var(--slate-50);
+
+  /* Borders */
+  --border: var(--slate-200);
+  --border-strong: var(--slate-300);
+  --focus: var(--cobalt-500);
+  --focus-ring: rgb(58 99 240 / 0.18);
+
+  /* Text & icons */
+  --fg: var(--slate-950);
+  --fg-2: var(--slate-600);
+  /* Slightly darker than slate-500 so tertiary text passes 4.5:1 on every tinted surface. */
+  --fg-3: #646c7e;
+  --fg-disabled: var(--slate-400);
+  --icon: var(--slate-600);
+  --icon-muted: var(--slate-400);
+  --link: var(--cobalt-600);
+
+  /* Brand */
+  --brand: var(--cobalt-600);
+  --brand-hover: var(--cobalt-700);
+  --brand-press: var(--cobalt-800);
+  --brand-subtle: var(--cobalt-50);
+  --brand-text: var(--cobalt-700);
+  --brand-border: var(--cobalt-200);
+
+  /* AI accent — reserved for anything an agent writes */
+  --ai: var(--violet-600);
+  --ai-hover: var(--violet-700);
+  --ai-press: var(--violet-800);
+  --ai-subtle: var(--violet-50);
+  --ai-text: var(--violet-700);
+  --ai-border: var(--violet-200);
+  --ai-caret: var(--violet-500);
+
+  /* Status */
+  --ok: var(--green-600);
+  --ok-subtle: var(--green-50);
+  --ok-text: var(--green-700);
+  --ok-border: var(--green-200);
+
+  --warn: var(--amber-500);
+  --warn-subtle: var(--amber-50);
+  --warn-text: var(--amber-700);
+  --warn-border: var(--amber-200);
+
+  --danger: var(--red-600);
+  --danger-hover: var(--red-700);
+  --danger-press: var(--red-800);
+  --danger-subtle: var(--red-50);
+  --danger-text: var(--red-700);
+  --danger-border: var(--red-200);
+
+  --info: var(--sky-600);
+  --info-subtle: var(--sky-50);
+  --info-text: var(--sky-700);
+  --info-border: var(--sky-200);
+
+  /* Accent used by live dots and credit badges; accent-strong carries white text (4.7:1). */
+  --accent: var(--orange-500);
+  --accent-strong: #c94a14;
+
+  /* Data visualisation */
+  --chart-1: var(--cobalt-600);
+  --chart-2: var(--amber-500);
+  --chart-3: var(--sky-500);
+  --chart-4: var(--violet-500);
+  --chart-5: var(--green-500);
+  --chart-6: var(--red-400);
+  --chart-grid: var(--slate-100);
+  --chart-axis: var(--slate-300);
+
+  /* Code blocks */
+  --code: var(--slate-950);
+  --code-fg: var(--slate-200);
+  --code-border: var(--slate-950);
+
+  /* Overlays & elevation */
+  --scrim: rgb(13 16 24 / 0.4);
+  --shadow-raised: 0 1px 2px rgb(13 16 24 / 0.06), 0 1px 3px rgb(13 16 24 / 0.08);
+  --shadow-overlay: 0 4px 8px -2px rgb(13 16 24 / 0.08), 0 12px 24px -4px rgb(13 16 24 / 0.12);
+  --shadow-modal: 0 8px 16px -4px rgb(13 16 24 / 0.08), 0 24px 48px -12px rgb(13 16 24 / 0.22);
+  --shadow-inverse: 0 8px 18px -8px rgb(13 16 24 / 0.55);
+
+  /* Decorative page washes used on dashboards and auth */
+  --wash-page:
+    radial-gradient(900px 500px at 100% 0%, rgb(34 194 122 / 0.1), transparent 60%),
+    radial-gradient(800px 500px at 0% 0%, rgb(242 107 58 / 0.08), transparent 60%), #f1f2f5;
+  --wash-hero:
+    radial-gradient(520px 260px at 0% 0%, rgb(242 107 58 / 0.1), transparent 70%),
+    radial-gradient(520px 300px at 100% 0%, rgb(34 194 122 / 0.1), transparent 70%);
+  --wash-success: radial-gradient(400px 200px at 100% 0%, rgb(34 194 122 / 0.16), transparent 70%);
+}
+
+/* ---------- 2. Semantic tokens — Dark ---------- */
+.dark {
+  color-scheme: dark;
+
+  --canvas: var(--slate-950);
+  --page: #07090f;
+  --surface: var(--slate-900);
+  --raised: var(--slate-800);
+  --sunken: var(--slate-950);
+  --subtle: var(--slate-800);
+  --panel: #0b0e15;
+  --inverse: var(--slate-50);
+  --on-inverse: var(--slate-950);
+
+  --border: var(--slate-800);
+  --border-strong: var(--slate-700);
+  --focus: var(--cobalt-400);
+  --focus-ring: rgb(94 134 250 / 0.25);
+
+  --fg: var(--slate-50);
+  --fg-2: var(--slate-300);
+  --fg-3: var(--slate-400);
+  --fg-disabled: var(--slate-500);
+  --icon: var(--slate-300);
+  --icon-muted: var(--slate-500);
+  --link: var(--cobalt-300);
+
+  --brand: var(--cobalt-500);
+  --brand-hover: var(--cobalt-600);
+  --brand-press: var(--cobalt-700);
+  --brand-subtle: var(--cobalt-950);
+  --brand-text: var(--cobalt-300);
+  --brand-border: var(--cobalt-800);
+
+  --ai: var(--violet-600);
+  --ai-hover: var(--violet-700);
+  --ai-press: var(--violet-800);
+  --ai-subtle: var(--violet-950);
+  --ai-text: var(--violet-300);
+  --ai-border: var(--violet-800);
+  --ai-caret: var(--violet-400);
+
+  --ok: var(--green-500);
+  --ok-subtle: var(--green-950);
+  --ok-text: var(--green-300);
+  --ok-border: var(--green-800);
+
+  --warn: var(--amber-400);
+  --warn-subtle: var(--amber-950);
+  --warn-text: var(--amber-300);
+  --warn-border: var(--amber-800);
+
+  --danger: var(--red-500);
+  --danger-hover: var(--red-600);
+  --danger-press: var(--red-700);
+  --danger-subtle: var(--red-950);
+  --danger-text: var(--red-300);
+  --danger-border: var(--red-800);
+
+  --info: var(--sky-400);
+  --info-subtle: var(--sky-950);
+  --info-text: var(--sky-300);
+  --info-border: var(--sky-800);
+
+  --chart-1: var(--cobalt-400);
+  --chart-2: var(--amber-600);
+  --chart-3: var(--sky-600);
+  --chart-4: var(--violet-600);
+  --chart-5: var(--green-500);
+  --chart-6: var(--red-400);
+  --chart-grid: var(--slate-800);
+  --chart-axis: var(--slate-700);
+
+  --code: var(--slate-950);
+  --code-fg: var(--slate-300);
+  --code-border: var(--slate-800);
+
+  --scrim: rgb(0 0 0 / 0.6);
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-overlay: 0 12px 24px -4px rgb(0 0 0 / 0.55);
+  --shadow-modal: 0 24px 48px -12px rgb(0 0 0 / 0.75);
+  --shadow-inverse: 0 8px 18px -8px rgb(0 0 0 / 0.6);
+
+  --wash-page:
+    radial-gradient(900px 500px at 100% 0%, rgb(34 194 122 / 0.08), transparent 60%),
+    radial-gradient(800px 500px at 0% 0%, rgb(58 99 240 / 0.1), transparent 60%), #07090f;
+  --wash-hero:
+    radial-gradient(520px 260px at 0% 0%, rgb(58 99 240 / 0.16), transparent 70%),
+    radial-gradient(520px 300px at 100% 0%, rgb(34 194 122 / 0.1), transparent 70%);
+  --wash-success: radial-gradient(400px 200px at 100% 0%, rgb(34 194 122 / 0.14), transparent 70%);
+}
+
+/* ---------- 3. Tailwind theme mapping ---------- */
+@theme inline {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --color-canvas: var(--canvas);
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-subtle: var(--subtle);
+  --color-panel: var(--panel);
+  --color-inverse: var(--inverse);
+  --color-on-inverse: var(--on-inverse);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-focus: var(--focus);
+  --color-focus-ring: var(--focus-ring);
+
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-disabled: var(--fg-disabled);
+  --color-icon: var(--icon);
+  --color-icon-muted: var(--icon-muted);
+  --color-link: var(--link);
+
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-press: var(--brand-press);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-brand-text: var(--brand-text);
+  --color-brand-border: var(--brand-border);
+
+  --color-ai: var(--ai);
+  --color-ai-hover: var(--ai-hover);
+  --color-ai-press: var(--ai-press);
+  --color-ai-subtle: var(--ai-subtle);
+  --color-ai-text: var(--ai-text);
+  --color-ai-border: var(--ai-border);
+  --color-ai-caret: var(--ai-caret);
+
+  --color-ok: var(--ok);
+  --color-ok-subtle: var(--ok-subtle);
+  --color-ok-text: var(--ok-text);
+  --color-ok-border: var(--ok-border);
+  --color-warn: var(--warn);
+  --color-warn-subtle: var(--warn-subtle);
+  --color-warn-text: var(--warn-text);
+  --color-warn-border: var(--warn-border);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-press: var(--danger-press);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-danger-text: var(--danger-text);
+  --color-danger-border: var(--danger-border);
+  --color-info: var(--info);
+  --color-info-subtle: var(--info-subtle);
+  --color-info-text: var(--info-text);
+  --color-info-border: var(--info-border);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis);
+
+  --color-code: var(--code);
+  --color-code-fg: var(--code-fg);
+  --color-code-border: var(--code-border);
+  --color-scrim: var(--scrim);
+
+  /* Radius — matches the kit's radius/* variables */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 28px;
+
+  /* Elevation */
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
+  --shadow-modal: var(--shadow-modal);
+  --shadow-inverse: var(--shadow-inverse);
+
+  /* Type scale — size / line-height / tracking */
+  --text-display: 48px;
+  --text-display--line-height: 56px;
+  --text-display--letter-spacing: -0.025em;
+  --text-h1: 32px;
+  --text-h1--line-height: 40px;
+  --text-h1--letter-spacing: -0.02em;
+  --text-h2: 24px;
+  --text-h2--line-height: 32px;
+  --text-h2--letter-spacing: -0.015em;
+  --text-h3: 20px;
+  --text-h3--line-height: 28px;
+  --text-h3--letter-spacing: -0.01em;
+  --text-h4: 16px;
+  --text-h4--line-height: 24px;
+  --text-h4--letter-spacing: -0.005em;
+  --text-body-l: 16px;
+  --text-body-l--line-height: 24px;
+  --text-body-m: 14px;
+  --text-body-m--line-height: 20px;
+  --text-body-s: 12px;
+  --text-body-s--line-height: 16px;
+  --text-13: 13px;
+  --text-13--line-height: 18px;
+  --text-caption: 11px;
+  --text-caption--line-height: 14px;
+  --text-caption--letter-spacing: 0.01em;
+  --text-mono: 13px;
+  --text-mono--line-height: 20px;
+
+  --animate-caret: caret-blink 1s steps(2, start) infinite;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-pulse-soft: pulse-soft 1.8s ease-in-out infinite;
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-pop-in: pop-in 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  --animate-slide-in-right: slide-in-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes caret-blink {
+  to {
+    visibility: hidden;
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+/* ---------- 4. Base ---------- */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-body-m text-fg;
+    min-height: 100dvh;
+  }
+
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  /*
+   * Scroll containers must be a containing block, otherwise absolutely
+   * positioned children (sr-only inputs, switch knobs, badges) escape the
+   * overflow clip and widen the page on small screens. Position utilities
+   * (`absolute`, `sticky`, `fixed`) live in a later layer and still win.
+   */
+  :where(.overflow-x-auto, .overflow-auto, .overflow-x-scroll, .overflow-scroll) {
+    position: relative;
+  }
+
+  ::selection {
+    background: var(--brand-subtle);
+    color: var(--brand-text);
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ---------- 5. Utilities ---------- */
+@utility bg-wash-page {
+  background: var(--wash-page);
+}
+@utility bg-wash-hero {
+  background-image: var(--wash-hero);
+}
+@utility bg-wash-success {
+  background-image: var(--wash-success);
+}
+@utility bg-stripes {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--fg) 6%, transparent) 0 2px,
+    transparent 2px 7px
+  );
+}
+@utility bg-dot-grid {
+  background-image: radial-gradient(circle, var(--border-strong) 1px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+@utility ring-focus {
+  box-shadow: 0 0 0 3px var(--focus-ring);
+  border-color: var(--focus);
+}
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
